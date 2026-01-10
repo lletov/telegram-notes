@@ -82,48 +82,89 @@ function App() {
     setText("");
   };
 
-  // 4️⃣ Сохранение заметки
+  // 4️⃣ Сохранение заметки (140 символов максимум)
   const saveNote = async () => {
-    if (!selectedNote) return;
+  if (!selectedNote) return;
 
-    const { error } = await supabase
-      .from("notes")
-      .update({
-        content: text,
-        updated_at: new Date()
-      })
-      .eq("id", selectedNote.id);
+  if (text.length > 140) {
+    alert("Максимальная длина заметки — 140 символов");
+    return;
+  }
 
-    if (error) console.error("Ошибка сохранения:", error);
-    else console.log("Заметка сохранена");
-  };
+  const { error } = await supabase
+    .from("notes")
+    .update({
+      content: text,
+      updated_at: new Date()
+    })
+    .eq("id", selectedNote.id);
 
-  // 5️⃣ Добавление совместного пользователя по никнейму
+  if (error) console.error("Ошибка сохранения:", error);
+  else console.log("Заметка сохранена");
+};
+
+  // 5️⃣ Добавление совместного пользователя по никнейму (3 аккаунта максимум)
   const addSharedUser = async () => {
-    if (!selectedNote || !newSharedUser) return;
+  if (!selectedNote || !newSharedUser) return;
 
-    if (selectedNote.shared_with.includes(newSharedUser)) return;
+  if (selectedNote.shared_with.includes(newSharedUser)) return;
 
-    const updatedShared = [...selectedNote.shared_with, newSharedUser];
+  if (selectedNote.shared_with.length >= 3) {
+    alert("Нельзя добавить больше 3 пользователей");
+    return;
+  }
 
-    const { error } = await supabase
-      .from("notes")
-      .update({ shared_with: updatedShared })
-      .eq("id", selectedNote.id);
+  const updatedShared = [...selectedNote.shared_with, newSharedUser];
 
-    if (error) {
-      console.error("Ошибка добавления пользователя:", error);
-      return;
-    }
+  const { error } = await supabase
+    .from("notes")
+    .update({ shared_with: updatedShared })
+    .eq("id", selectedNote.id);
 
-    setNotes((prev) =>
-      prev.map((n) =>
-        n.id === selectedNote.id ? { ...n, shared_with: updatedShared } : n
-      )
-    );
+  if (error) {
+    console.error("Ошибка добавления пользователя:", error);
+    return;
+  }
 
-    setNewSharedUser("");
-  };
+  setNotes((prev) =>
+    prev.map((n) =>
+      n.id === selectedNote.id ? { ...n, shared_with: updatedShared } : n
+    )
+  );
+
+  setNewSharedUser("");
+};
+
+  // Удаление пользователя из совместного доступа
+  const removeSharedUser = async (usernameToRemove: string) => {
+  if (!selectedNote) return;
+
+  if (selectedNote.owner_id !== userId) {
+    alert("Удалять пользователей из доступа может только владелец");
+    return;
+  }
+
+  const updatedShared = selectedNote.shared_with.filter(
+    (u) => u !== usernameToRemove
+  );
+
+  const { error } = await supabase
+    .from("notes")
+    .update({ shared_with: updatedShared })
+    .eq("id", selectedNote.id);
+
+  if (error) {
+    console.error("Ошибка удаления пользователя:", error);
+    return;
+  }
+
+  setNotes((prev) =>
+    prev.map((n) =>
+      n.id === selectedNote.id ? { ...n, shared_with: updatedShared } : n
+    )
+  );
+};
+
 
   // Удаление заметки только для того кто создавал
   const deleteNote = async (noteId: string) => {
@@ -135,20 +176,30 @@ function App() {
     return;
   }
 
+  // Удаляем заметку по её ID
   const { error } = await supabase
     .from("notes")
     .delete()
-    .eq("id", noteId);
+    .eq("id", noteId)
+    .eq("owner_id", userId);
 
   if (error) {
     console.error("Ошибка удаления заметки:", error);
+    alert("Не удалось удалить заметку: " + error.message);
     return;
   }
 
+  // Обновляем фронт только если удаление прошло
   setNotes((prev) => prev.filter((n) => n.id !== noteId));
-  setSelectedNoteId(prev => prev === noteId ? null : prev);
-  setText("");
+
+  // Если удалённая заметка была выбрана, сбрасываем состояние
+  if (selectedNoteId === noteId) {
+    setSelectedNoteId(null);
+    setText("");
+  }
 };
+
+
 
   if (loading) return <div style={{ padding: 16 }}>Загрузка…</div>;
 
@@ -247,10 +298,30 @@ function App() {
 
           {/* Показ текущих совместных пользователей */}
           {selectedNote.shared_with.length > 0 && (
-            <div style={{ marginTop: 8, fontSize: 14 }}>
-              Совместный доступ: {selectedNote.shared_with.join(", ")}
-            </div>
-          )}
+  <div style={{ marginTop: 8, fontSize: 14 }}>
+    Совместный доступ:
+    {selectedNote.shared_with.map((u) => (
+      <span key={u} style={{ marginRight: 8 }}>
+        {u}
+        {selectedNote.owner_id === userId && (
+          <button
+            onClick={() => removeSharedUser(u)}
+            style={{
+              marginLeft: 4,
+              background: "none",
+              border: "none",
+              color: "#f33",
+              cursor: "pointer",
+              fontWeight: "bold",
+            }}
+          >
+            ✖
+          </button>
+        )}
+      </span>
+    ))}
+  </div>
+)}
         </>
       )}
     </div>
